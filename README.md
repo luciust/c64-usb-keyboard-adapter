@@ -1,4 +1,4 @@
-# Commodore 64 USB Keyboard & Wireless Host Adapter
+# Gemini coded - NOT TESTED YET - Commodore 64 USB Keyboard & Wireless Host Adapter
 
 A dual-core Raspberry Pi Pico (RP2040) bridge that connects modern USB keyboards and 2.4GHz wireless keyboard/mouse combos directly to the Commodore 64 (C64) mainboard keyboard connector (**CN8**).
 
