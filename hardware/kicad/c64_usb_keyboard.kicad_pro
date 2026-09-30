@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "filename": "c64_usb_keyboard.kicad_pro",
+    "version": 3
+  },
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_clearance": 0.25,
+        "min_track_width": 0.25,
+        "min_via_diameter": 0.8,
+        "min_via_drill": 0.4,
+        "min_copper_edge_clearance": 0.5
+      }
+    }
+  },
+  "schematic": {
+    "top_level_sheets": [
+      {
+        "filename": "c64_usb_keyboard.kicad_sch",
+        "name": "c64_usb_keyboard",
+        "uuid": "be7271d9-6c36-4f65-b953-b511dd00725d"
+      }
+    ]
+  }
+}

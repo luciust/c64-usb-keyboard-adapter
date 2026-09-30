@@ -1,0 +1,22 @@
+(kicad_sch
+  (version 20230121)
+  (generator "eeschema")
+  (generator_version "7.0")
+  (uuid "ef3b4a5a-5eee-460d-85f5-0732142e77a3")
+  (paper "A4")
+  (title_block
+    (title "C64 USB Keyboard & Wireless Host Adapter (DIP/THT)")
+    (date "2026-09-30")
+    (rev "v1.0")
+    (company "AGRAVITY Hardware / Software Project")
+    (comment 1 "Raspberry Pi Pico + 74HCT245 + BAT42 Schottky + Voltage Dividers")
+    (comment 2 "100% DIP and THT Construction - C64 CN8 Connector")
+  )
+  (lib_symbols
+  )
+  (sheet_instances
+    (path "/"
+      (page "1")
+    )
+  )
+)
