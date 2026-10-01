@@ -5,6 +5,14 @@
   },
   "board": {
     "design_settings": {
+      "defaults": {
+        "board_outline_line_width": 0.15,
+        "copper_line_width": 0.25,
+        "silk_line_width": 0.12,
+        "zones": {
+          "min_clearance": 0.35
+        }
+      },
       "rules": {
         "min_clearance": 0.25,
         "min_track_width": 0.25,
@@ -19,7 +27,7 @@
       {
         "filename": "c64_usb_keyboard.kicad_sch",
         "name": "c64_usb_keyboard",
-        "uuid": "be7271d9-6c36-4f65-b953-b511dd00725d"
+        "uuid": "f639206c-6e94-4ae7-a4ac-ce27d39c2886"
       }
     ]
   }

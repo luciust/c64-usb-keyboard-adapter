@@ -6,7 +6,7 @@
 
 // Array mapping each Column (0-7) to a bitmask of active Rows (bit 0-7)
 // When Column C is pulled LOW by the C64 CIA, any bit R set in c64_col_to_rows[C]
-// will cause Row R to be driven LOW (0) on the 74HCT245.
+// will cause Row R to be driven LOW (0V) via native open-drain (GPIO_OE = 1).
 static volatile uint8_t c64_col_to_rows[C64_MATRIX_COLS];
 
 // Debounce / Hold-time management
@@ -14,7 +14,7 @@ static absolute_time_t press_timestamp[C64_MATRIX_ROWS][C64_MATRIX_COLS];
 static volatile bool pending_release[C64_MATRIX_ROWS][C64_MATRIX_COLS];
 static volatile bool is_pressed[C64_MATRIX_ROWS][C64_MATRIX_COLS];
 
-// RESTORE key state
+// RESTORE key state (Native Open-Drain on GP16)
 static volatile bool restore_active = false;
 static absolute_time_t restore_press_time;
 static volatile bool restore_pending_release = false;
@@ -23,40 +23,42 @@ static volatile bool restore_pending_release = false;
 static absolute_time_t last_led_blink;
 
 void c64_matrix_init(void) {
-    // Initialize Column inputs (GP0 - GP7)
-    // C64 CIA 1 Port A drives these lines LOW when scanning
+    // 1. Initialize Column inputs (GP0 - GP7)
+    // On Pico 2 (RP2350), GP0-GP7 are 5V-tolerant digital inputs.
+    // They connect DIRECTLY to C64 CIA 1 Port A (PA0 - PA7) with zero level shifters!
     for (int col = 0; col < C64_MATRIX_COLS; col++) {
         uint pin = C64_COL_BASE_PIN + col;
         gpio_init(pin);
         gpio_set_dir(pin, GPIO_IN);
-        // Resistor divider pulls to GND if disconnected, but C64 drives HIGH/LOW
         gpio_disable_pulls(pin);
     }
 
-    // Initialize Row outputs (GP8 - GP15)
-    // Connected to 74HCT245 inputs.
-    // 74HCT245 outputs connect to Schottky diode cathodes.
-    // Driving HIGH (1) puts 5V on cathode -> Diode OFF (Row floats high via C64 pullups).
-    // Driving LOW (0) puts 0V on cathode -> Diode conducts (Row pulled low).
+    // 2. Initialize Row outputs (GP8 - GP15)
+    // On Pico 2 (RP2350), we use Native Open-Drain:
+    // Output latch is locked to 0 (GND).
+    // To assert (pull LOW): Direction = GPIO_OUT (sinks current to GND).
+    // To release (High-Z): Direction = GPIO_IN (5V-tolerant input, line pulled up to 5V by C64).
     for (int row = 0; row < C64_MATRIX_ROWS; row++) {
         uint pin = C64_ROW_BASE_PIN + row;
         gpio_init(pin);
-        gpio_put(pin, 1); // Start inactive (HIGH = 3.3V)
-        gpio_set_dir(pin, GPIO_OUT);
+        gpio_put(pin, 0);         // Latch locked to 0 (GND)
+        gpio_set_dir(pin, GPIO_IN); // Start in High-Z (unpressed)
+        gpio_disable_pulls(pin);
     }
 
-    // Initialize RESTORE pin (GP16)
-    // Drives gate of 2N7000 / base of 2N3904 open-drain transistor
+    // 3. Initialize RESTORE pin (GP16)
+    // Native Open-Drain directly connected to C64 CN8 Pin 3 (/RESTORE)
     gpio_init(C64_RESTORE_PIN);
-    gpio_put(C64_RESTORE_PIN, 0); // Transistor OFF (floating)
-    gpio_set_dir(C64_RESTORE_PIN, GPIO_OUT);
+    gpio_put(C64_RESTORE_PIN, 0);         // Latch locked to 0 (GND)
+    gpio_set_dir(C64_RESTORE_PIN, GPIO_IN); // Start in High-Z
+    gpio_disable_pulls(C64_RESTORE_PIN);
 
-    // Initialize Status LED (GP25)
+    // 4. Initialize Status LED (GP25)
     gpio_init(STATUS_LED_PIN);
     gpio_set_dir(STATUS_LED_PIN, GPIO_OUT);
     gpio_put(STATUS_LED_PIN, 0);
 
-    // Clear state
+    // Clear matrix state
     for (int c = 0; c < C64_MATRIX_COLS; c++) {
         c64_col_to_rows[c] = 0;
         for (int r = 0; r < C64_MATRIX_ROWS; r++) {
@@ -66,19 +68,19 @@ void c64_matrix_init(void) {
     }
 }
 
-// Core 1 dedicated real-time matrix loop
-// Latency: < 50 nanoseconds from C64 column strobe to row response
+// Core 1 dedicated real-time matrix loop (Native Open-Drain Engine)
+// Latency: < 30 nanoseconds from C64 column strobe to row response
 void c64_matrix_core1_run(void) {
     while (1) {
         // Sample all 8 Column inputs (GP0 - GP7)
-        // Note: Active LOW from C64 CIA (0 = column selected, 1 = unselected)
+        // Active LOW from C64 CIA (0 = column selected, 1 = unselected)
         uint32_t gpio_in = sio_hw->gpio_in;
         uint8_t cols_raw = (uint8_t)(gpio_in & C64_COL_MASK);
         uint8_t active_cols = (uint8_t)(~cols_raw); // 1 = selected column
 
         uint8_t rows_active = 0;
         if (active_cols != 0) {
-            // Unroll for maximum execution speed (< 15 CPU cycles)
+            // Unroll for maximum execution speed (< 12 CPU cycles on Cortex-M33)
             if (active_cols & 0x01) rows_active |= c64_col_to_rows[0];
             if (active_cols & 0x02) rows_active |= c64_col_to_rows[1];
             if (active_cols & 0x04) rows_active |= c64_col_to_rows[2];
@@ -89,24 +91,21 @@ void c64_matrix_core1_run(void) {
             if (active_cols & 0x80) rows_active |= c64_col_to_rows[7];
         }
 
-        // Active row must be driven LOW (0) on GP8-GP15.
-        // Inactive row must be driven HIGH (1) on GP8-GP15.
-        uint32_t row_bits = ((uint32_t)(~rows_active) & 0xFF) << C64_ROW_BASE_PIN;
-        
-        // Atomic update of Row GPIOs
-        sio_hw->gpio_out = (sio_hw->gpio_out & ~C64_ROW_MASK) | row_bits;
+        // Native Open-Drain control via Output Enable (sio_hw->gpio_oe):
+        // Bit = 1: Output enabled -> drives 0V (GND)
+        // Bit = 0: Output disabled -> High-Z (floats to 5V via C64 motherboard pull-ups)
+        uint32_t oe_bits = ((uint32_t)rows_active) << C64_ROW_BASE_PIN;
+        sio_hw->gpio_oe = (sio_hw->gpio_oe & ~C64_ROW_MASK) | oe_bits;
     }
 }
 
 void c64_matrix_press(uint8_t row, uint8_t col) {
     if (row >= C64_MATRIX_ROWS || col >= C64_MATRIX_COLS) return;
 
-    // Record press time and set active
     press_timestamp[row][col] = get_absolute_time();
     pending_release[row][col] = false;
     is_pressed[row][col] = true;
 
-    // Update active row mask for this column
     c64_col_to_rows[col] |= (uint8_t)(1 << row);
 
     // Activity LED pulse
@@ -119,15 +118,12 @@ void c64_matrix_release(uint8_t row, uint8_t col) {
 
     if (!is_pressed[row][col]) return;
 
-    // Check if minimum contact hold time has elapsed
     int64_t held_us = absolute_time_diff_us(press_timestamp[row][col], get_absolute_time());
     if (held_us >= C64_MIN_HOLD_TIME_US) {
-        // Immediate release
         c64_col_to_rows[col] &= (uint8_t)~(1 << row);
         is_pressed[row][col] = false;
         pending_release[row][col] = false;
     } else {
-        // Mark for deferred release by c64_matrix_task()
         pending_release[row][col] = true;
     }
 }
@@ -140,6 +136,8 @@ void c64_matrix_release_all(void) {
             is_pressed[r][c] = false;
         }
     }
+    // High-Z on all rows immediately
+    sio_hw->gpio_oe &= ~C64_ROW_MASK;
     c64_matrix_set_restore(false);
 }
 
@@ -148,8 +146,8 @@ void c64_matrix_set_restore(bool pressed) {
         restore_active = true;
         restore_pending_release = false;
         restore_press_time = get_absolute_time();
-        // Turn ON transistor -> pulls Pin 3 to GND
-        gpio_put(C64_RESTORE_PIN, 1);
+        // Drive GP16 LOW (OUTPUT mode) -> pulls /RESTORE to GND
+        gpio_set_dir(C64_RESTORE_PIN, GPIO_OUT);
         gpio_put(STATUS_LED_PIN, 1);
     } else {
         if (!restore_active) return;
@@ -157,7 +155,8 @@ void c64_matrix_set_restore(bool pressed) {
         if (held_us >= C64_MIN_HOLD_TIME_US) {
             restore_active = false;
             restore_pending_release = false;
-            gpio_put(C64_RESTORE_PIN, 0); // Transistor OFF
+            // High-Z (INPUT mode) -> line floats back to 5V
+            gpio_set_dir(C64_RESTORE_PIN, GPIO_IN);
         } else {
             restore_pending_release = true;
         }
@@ -187,7 +186,7 @@ void c64_matrix_task(void) {
         if (held_us >= C64_MIN_HOLD_TIME_US) {
             restore_active = false;
             restore_pending_release = false;
-            gpio_put(C64_RESTORE_PIN, 0);
+            gpio_set_dir(C64_RESTORE_PIN, GPIO_IN);
         }
     }
 

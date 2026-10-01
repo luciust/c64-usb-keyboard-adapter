@@ -1,22 +1,22 @@
 (kicad_sch
-  (version 20230121)
-  (generator "eeschema")
-  (generator_version "7.0")
-  (uuid "ef3b4a5a-5eee-460d-85f5-0732142e77a3")
-  (paper "A4")
-  (title_block
-    (title "C64 USB Keyboard & Wireless Host Adapter (DIP/THT)")
-    (date "2026-09-30")
-    (rev "v1.0")
-    (company "AGRAVITY Hardware / Software Project")
-    (comment 1 "Raspberry Pi Pico + 74HCT245 + BAT42 Schottky + Voltage Dividers")
-    (comment 2 "100% DIP and THT Construction - C64 CN8 Connector")
-  )
-  (lib_symbols
-  )
-  (sheet_instances
-    (path "/"
-      (page "1")
-    )
-  )
+	(version 20231120)
+	(generator "eeschema")
+	(generator_version "8.0")
+	(uuid "5caf8caa-afe6-4138-ab2f-ee32430978c8")
+	(paper "A4")
+	(title_block
+		(title "C64 USB Keyboard & Wireless Host Adapter (Pico 2 / RP2350)")
+		(date "2026-10-01")
+		(rev "v2.0 - Pico 2 Ultra-Simplified")
+		(company "AGRAVITY Hardware / Software Project")
+		(comment 1 "RP2350 5V-Tolerant GPIOs + Native Open-Drain Matrix Emulation")
+		(comment 2 "Direct C64 Motherboard CN8 Interface - Zero Level Shifter ICs")
+	)
+	(lib_symbols
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
 )
